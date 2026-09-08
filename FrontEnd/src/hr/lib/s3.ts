@@ -13,8 +13,37 @@ export const isS3Configured = (): boolean => {
 };
 
 /**
+ * Uploads a file to the backend local server storage (/api/hr/upload).
+ */
+export const uploadToBackend = async (
+  file: File,
+  onProgress?: (percentage: number) => void
+): Promise<string> => {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const { api } = await import("../../api/client");
+  
+  const response = await api.post("/hr/upload", formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+    onUploadProgress: (progressEvent) => {
+      if (progressEvent.total) {
+        const percentage = Math.round((progressEvent.loaded / progressEvent.total) * 100);
+        onProgress?.(percentage);
+      }
+    },
+  });
+
+  console.log("[LOCAL UPLOAD] Upload complete. Response URL:", response.data.url);
+  return response.data.url;
+};
+
+/**
  * Uploads a file to Amazon S3. 
- * Falls back to local backend API upload if credentials are not configured in the environment.
+ * Automatically falls back to local backend API upload if S3 credentials are not configured
+ * or if S3 upload fails due to AWS authentication / network / CORS issues.
  * 
  * @param file The file to upload (Video, PDF, or PPT)
  * @param onProgress Callback function to track upload progress percentage (0 - 100)
@@ -24,34 +53,19 @@ export const uploadFileToS3 = async (
   file: File,
   onProgress?: (percentage: number) => void
 ): Promise<string> => {
-  const fileExtension = file.name.split(".").pop();
-  const uniqueKey = `${Date.now()}-${uuidv4()}.${fileExtension}`;
+  const useLocal = import.meta.env.VITE_USE_LOCAL_STORAGE === "true";
 
-  if (!isS3Configured()) {
-    console.warn("AWS S3 credentials are not fully configured in the .env file. Falling back to local backend upload API.");
-    
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const { api } = await import("../../api/client");
-    
-    const response = await api.post("/hr/upload", formData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-      onUploadProgress: (progressEvent) => {
-        if (progressEvent.total) {
-          const percentage = Math.round((progressEvent.loaded / progressEvent.total) * 100);
-          onProgress?.(percentage);
-        }
-      },
-    });
-
-    console.log("[LOCAL UPLOAD] Upload complete. Response URL:", response.data.url);
-    return response.data.url;
+  // If local storage is explicitly requested or S3 is not configured, upload to backend directly
+  if (useLocal || !isS3Configured()) {
+    console.log("[UPLOAD] Using local backend server storage API...");
+    return await uploadToBackend(file, onProgress);
   }
 
+  // Attempt AWS S3 upload with automatic fallback to local backend on failure
   try {
+    const fileExtension = file.name.split(".").pop();
+    const uniqueKey = `${Date.now()}-${uuidv4()}.${fileExtension}`;
+
     const { S3Client } = await import("@aws-sdk/client-s3");
     const { Upload } = await import("@aws-sdk/lib-storage");
 
@@ -71,7 +85,7 @@ export const uploadFileToS3 = async (
         Bucket: bucketName,
         Key: uniqueKey,
         Body: file,
-        ContentType: file.type,
+        ContentType: file.type || "application/octet-stream",
       },
     });
 
@@ -87,9 +101,12 @@ export const uploadFileToS3 = async (
     const uploadedUrl = `https://${cleanCFUrl}/${uniqueKey}`;
     console.log(`[S3 LIVE] Upload complete. Key: ${uniqueKey}. CloudFront URL: ${uploadedUrl}`);
     return uploadedUrl;
-  } catch (error) {
-    console.error("AWS S3 Upload Error: ", error);
-    throw error;
+  } catch (error: any) {
+    console.warn(
+      `[AWS S3 Upload Failed: ${error?.message || error}]. Automatically falling back to local server storage...`
+    );
+    // Seamless fallback to backend local storage so upload never breaks
+    return await uploadToBackend(file, onProgress);
   }
 };
 
@@ -97,7 +114,13 @@ export const uploadFileToS3 = async (
  * Deletes a file from Amazon S3 based on its CloudFront URL.
  */
 export const deleteFileFromS3 = async (url: string): Promise<void> => {
-  if (!url || !isS3Configured()) return;
+  if (!url) return;
+
+  // Skip S3 deletion for local server uploads
+  if (url.includes("/uploads/") || !isS3Configured()) {
+    console.log("[DELETE] Skipping S3 deletion for local file:", url);
+    return;
+  }
 
   // Extract the S3 key from the URL
   const cleanCFUrl = cloudfrontDomain.replace(/^(https?:\/\/)?/, "").replace(/\/$/, "");
@@ -130,5 +153,3 @@ export const deleteFileFromS3 = async (url: string): Promise<void> => {
     console.error(`[S3 LIVE] Failed to delete key: ${key}`, error);
   }
 };
-
-

@@ -39,6 +39,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/manager/dashboard/events").permitAll()
                         .requestMatchers("/api/hr/events").permitAll()
                         .requestMatchers("/scorm-serve/**").permitAll()
+                        .requestMatchers("/uploads/**").permitAll()
                         .requestMatchers("/error").permitAll()
                         .requestMatchers("/api/employee/**").hasAnyAuthority("EMPLOYEE", "MANAGER", "HR")
                         .requestMatchers(HttpMethod.GET, "/api/admin/learning-paths", "/api/admin/learning-paths/**").hasAnyAuthority("EMPLOYEE", "MANAGER", "HR", "ADMIN")
@@ -55,14 +56,28 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
 
+        config.setAllowedOriginPatterns(List.of(
+                "http://localhost:[*]",
+                "http://localhost:*",
+                "http://127.0.0.1:[*]",
+                "http://127.0.0.1:*"
+        ));
         config.setAllowedOrigins(List.of(
                 "http://localhost:5173",
                 "http://localhost:5174",
+                "http://localhost:5175",
+                "http://localhost:5176",
+                "http://localhost:5177",
+                "http://localhost:3000",
                 "http://127.0.0.1:5173",
-                "http://127.0.0.1:5174"
+                "http://127.0.0.1:5174",
+                "http://127.0.0.1:5175",
+                "http://127.0.0.1:5176",
+                "http://127.0.0.1:5177",
+                "http://127.0.0.1:3000"
         ));
 
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         config.setAllowedHeaders(List.of("*"));
         config.setExposedHeaders(List.of("Authorization"));
         config.setAllowCredentials(true);

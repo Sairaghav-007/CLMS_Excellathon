@@ -9,6 +9,13 @@ import { initWebPush } from "../firebase";
 
 const roles: Role[] = ["EMPLOYEE", "MANAGER", "HR", "ADMIN"];
 
+const demoAccounts: { role: Role; email: string; label: string }[] = [
+  { role: "ADMIN", email: "admin@clms.com", label: "Admin" },
+  { role: "HR", email: "hr@clms.com", label: "HR" },
+  { role: "MANAGER", email: "manager@clms.com", label: "Manager" },
+  { role: "EMPLOYEE", email: "employee@clms.com", label: "Employee" },
+];
+
 export function LoginPage() {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [role, setRole] = useState<Role>("EMPLOYEE");
@@ -23,24 +30,44 @@ export function LoginPage() {
   const setAuth = useAuthStore((state) => state.setAuth);
   const navigate = useNavigate();
 
+  function fillDemo(accountRole: Role, accountEmail: string) {
+    setMode("login");
+    setRole(accountRole);
+    setEmail(accountEmail);
+    setPassword("Welcome@123");
+    setMessage("");
+  }
+
+  function handleEmailChange(val: string) {
+    setEmail(val);
+    const lower = val.trim().toLowerCase();
+    if (lower.startsWith("admin")) setRole("ADMIN");
+    else if (lower.startsWith("hr")) setRole("HR");
+    else if (lower.startsWith("manager")) setRole("MANAGER");
+    else if (lower.startsWith("employee") || lower.startsWith("alice") || lower.startsWith("bob") || lower.startsWith("charlie")) setRole("EMPLOYEE");
+  }
+
   async function handleLogin(event: React.FormEvent) {
     event.preventDefault();
     setMessage("");
     setIsSubmitting(true);
 
+    const cleanEmail = email.trim();
+    const cleanPassword = password;
+
     try {
       const response =
         mode === "signup"
           ? await api.post("/auth/signup/employee", {
-              fullName,
-              email,
-              password,
-              linkedinUrl,
+              fullName: fullName.trim(),
+              email: cleanEmail,
+              password: cleanPassword,
+              linkedinUrl: linkedinUrl.trim(),
               department,
             })
           : await api.post("/auth/login", {
-              email,
-              password,
+              email: cleanEmail,
+              password: cleanPassword,
               role,
             });
 
@@ -62,11 +89,13 @@ export function LoginPage() {
       if (response.data.role === "ADMIN") navigate("/admin");
       if (response.data.role === "HR") navigate("/hr");
       if (response.data.role === "MANAGER") navigate("/manager");
-    } catch (error) {
+    } catch (error: any) {
+      const serverError = error?.response?.data?.message || error?.response?.data?.error;
       setMessage(
-        mode === "signup"
+        serverError ||
+        (mode === "signup"
           ? "Signup failed. Please check the details or use another email."
-          : "Login failed. Please check your email, password, and role."
+          : "Login failed. Please verify your email and password.")
       );
     } finally {
       setIsSubmitting(false);
@@ -196,6 +225,33 @@ export function LoginPage() {
                     </button>
                   ))}
                 </div>
+
+                {/* 1-Click Demo Accounts */}
+                <div className="mt-4 p-3 rounded-2xl bg-surface-50 border border-surface-200/80">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-black uppercase tracking-wider text-surface-500">
+                      ⚡ 1-Click Demo Fill
+                    </span>
+                    <span className="text-[10px] font-medium text-surface-400">pwd: Welcome@123</span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {demoAccounts.map((demo) => (
+                      <button
+                        key={demo.role}
+                        type="button"
+                        onClick={() => fillDemo(demo.role, demo.email)}
+                        className={cn(
+                          "px-2 py-1.5 rounded-lg text-xs font-bold transition-all text-center cursor-pointer",
+                          role === demo.role && email === demo.email
+                            ? "bg-primary-600 text-white shadow-sm"
+                            : "bg-white border border-surface-200 text-surface-700 hover:bg-surface-100"
+                        )}
+                      >
+                        {demo.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -224,7 +280,7 @@ export function LoginPage() {
                   className="w-full rounded-xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm font-semibold outline-none focus:bg-white focus:border-primary-400 focus:ring-4 focus:ring-primary-100 transition-all placeholder:text-surface-400"
                   placeholder="employee@acmecorp.com"
                   value={email}
-                  onChange={(event) => setEmail(event.target.value)}
+                  onChange={(event) => handleEmailChange(event.target.value)}
                   disabled={isSubmitting}
                   type="email"
                   required

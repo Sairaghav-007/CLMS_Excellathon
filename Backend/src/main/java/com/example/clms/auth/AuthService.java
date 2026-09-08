@@ -29,17 +29,19 @@ public class AuthService {
 
     @Transactional
     public AuthResponse login(LoginRequest request) {
-        User user = userRepository.findByEmail(request.email())
-                .orElseThrow(() -> new RuntimeException("Invalid email or password"));
+        String cleanEmail = request.email() != null ? request.email().trim().toLowerCase() : "";
+        User user = userRepository.findByEmailIgnoreCase(cleanEmail)
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.UNAUTHORIZED, "Invalid email or password"));
 
         if (!passwordEncoder.matches(request.password(), user.getPassword())) {
-            throw new RuntimeException("Invalid email or password");
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.UNAUTHORIZED, "Invalid email or password");
         }
 
-        if (user.getRole() != request.role()) {
-            throw new RuntimeException("Selected login type does not match this account");
-        }
-
+        // If the account exists and password matches, we authenticate the user.
+        // Even if the UI sent a different role or the user forgot to switch tabs,
+        // we log them in under their legitimate database role.
         refreshTokenRepository.deleteByUserId(user.getId());
 
         String accessToken = jwtService.generateAccessToken(user);
@@ -67,13 +69,15 @@ public class AuthService {
 
     @Transactional
     public AuthResponse employeeSignup(EmployeeSignupRequest request) {
-        if (userRepository.findByEmail(request.email()).isPresent()) {
-            throw new RuntimeException("Email already exists");
+        String cleanEmail = request.email() != null ? request.email().trim().toLowerCase() : "";
+        if (userRepository.findByEmailIgnoreCase(cleanEmail).isPresent()) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "Email already exists");
         }
 
         User user = User.builder()
-                .fullName(request.fullName())
-                .email(request.email())
+                .fullName(request.fullName() != null ? request.fullName().trim() : "")
+                .email(cleanEmail)
                 .password(passwordEncoder.encode(request.password()))
                 .role(Role.EMPLOYEE)
                 .active(true)

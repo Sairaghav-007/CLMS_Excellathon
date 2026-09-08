@@ -121,28 +121,12 @@ export const SessionForm: React.FC<SessionFormProps> = ({ session, moduleId, onC
         return;
       }
 
-      // Inform user of configuration status
-      if (!isS3Configured()) {
-        toast.custom(
-          (t) => (
-            <div className={cn(
-              "px-4 py-3 rounded-2xl border flex flex-col shadow-xl animate-fade-in text-xs font-bold leading-relaxed",
-              isDark ? "bg-surface-800 border-surface-700 text-surface-200" : "bg-white border-surface-200 text-surface-700"
-            )}>
-              <span className="text-amber-500 font-extrabold uppercase tracking-wider mb-1">S3 Simulation Fallback</span>
-              <span>S3 keys not configured in .env. Simulating S3 upload...</span>
-            </div>
-          ),
-          { duration: 4000 }
-        );
-      } else {
-        toast.success(`Uploading ${file.name} to Amazon S3...`, {
-          style: {
-            background: isDark ? '#1e293b' : '#ffffff',
-            color: isDark ? '#f8fafc' : '#0f172a',
-          }
-        });
-      }
+      toast.success(`Uploading ${file.name}...`, {
+        style: {
+          background: isDark ? '#1e293b' : '#ffffff',
+          color: isDark ? '#f8fafc' : '#0f172a',
+        }
+      });
 
       try {
         const url = await uploadFileToS3(file, (pct) => {

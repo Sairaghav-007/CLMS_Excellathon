@@ -9,6 +9,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import com.example.clms.notification.SesEmailService;
+import com.example.clms.auth.RefreshTokenRepository;
+import jakarta.transaction.Transactional;
 
 import java.util.List;
 import java.util.Optional;
@@ -27,6 +29,9 @@ public class AdminUserController {
     @Autowired
     private SesEmailService sesEmailService;
 
+    @Autowired
+    private RefreshTokenRepository refreshTokenRepository;
+
     public static class AccountDto {
         public String uniqueId;
         public String email;
@@ -35,6 +40,7 @@ public class AdminUserController {
         public String lastName;
         public String role;
         public int joiningYear;
+        public String password;
 
         public AccountDto() {}
 
@@ -97,20 +103,27 @@ public class AdminUserController {
     public AccountDto createAccount(@RequestBody AccountDto dto) {
         // Map UI role display string to Role enum
         Role roleEnum = Role.EMPLOYEE;
-        if ("Administrator".equalsIgnoreCase(dto.role)) {
+        if ("Administrator".equalsIgnoreCase(dto.role) || "ADMIN".equalsIgnoreCase(dto.role)) {
             roleEnum = Role.ADMIN;
-        } else if ("HR Manager".equalsIgnoreCase(dto.role)) {
+        } else if ("HR Manager".equalsIgnoreCase(dto.role) || "HR".equalsIgnoreCase(dto.role)) {
             roleEnum = Role.HR;
-        } else if ("Department Manager".equalsIgnoreCase(dto.role)) {
+        } else if ("Department Manager".equalsIgnoreCase(dto.role) || "MANAGER".equalsIgnoreCase(dto.role)) {
             roleEnum = Role.MANAGER;
+        } else if ("Employee".equalsIgnoreCase(dto.role) || "EMPLOYEE".equalsIgnoreCase(dto.role)) {
+            roleEnum = Role.EMPLOYEE;
         }
 
         String fullName = (dto.firstName + " " + dto.middleName + " " + dto.lastName).replaceAll("\\s+", " ").trim();
         
+        String plainPassword = dto.password;
+        if (plainPassword == null || plainPassword.trim().isEmpty()) {
+            plainPassword = "password123";
+        }
+
         User user = User.builder()
                 .fullName(fullName)
                 .email(dto.email)
-                .password(passwordEncoder.encode("password123")) // default password
+                .password(passwordEncoder.encode(plainPassword)) // encode actual password
                 .role(roleEnum)
                 .active(true)
                 .build();
@@ -119,7 +132,7 @@ public class AdminUserController {
 
         // Send welcome email via SES
         try {
-            sesEmailService.sendWelcomeEmail(savedUser.getEmail(), savedUser.getFullName(), "password123");
+            sesEmailService.sendWelcomeEmail(savedUser.getEmail(), savedUser.getFullName(), plainPassword);
         } catch (Exception e) {
             System.err.println("[SES] Failed to send welcome email to " + savedUser.getEmail() + ": " + e.getMessage());
         }
@@ -135,12 +148,14 @@ public class AdminUserController {
             
             // Map UI role display string to Role enum
             Role roleEnum = Role.EMPLOYEE;
-            if ("Administrator".equalsIgnoreCase(dto.role)) {
+            if ("Administrator".equalsIgnoreCase(dto.role) || "ADMIN".equalsIgnoreCase(dto.role)) {
                 roleEnum = Role.ADMIN;
-            } else if ("HR Manager".equalsIgnoreCase(dto.role)) {
+            } else if ("HR Manager".equalsIgnoreCase(dto.role) || "HR".equalsIgnoreCase(dto.role)) {
                 roleEnum = Role.HR;
-            } else if ("Department Manager".equalsIgnoreCase(dto.role)) {
+            } else if ("Department Manager".equalsIgnoreCase(dto.role) || "MANAGER".equalsIgnoreCase(dto.role)) {
                 roleEnum = Role.MANAGER;
+            } else if ("Employee".equalsIgnoreCase(dto.role) || "EMPLOYEE".equalsIgnoreCase(dto.role)) {
+                roleEnum = Role.EMPLOYEE;
             }
 
             String fullName = (dto.firstName + " " + dto.middleName + " " + dto.lastName).replaceAll("\\s+", " ").trim();
@@ -148,6 +163,10 @@ public class AdminUserController {
             user.setFullName(fullName);
             user.setEmail(dto.email);
             user.setRole(roleEnum);
+
+            if (dto.password != null && !dto.password.trim().isEmpty()) {
+                user.setPassword(passwordEncoder.encode(dto.password));
+            }
             
             User updatedUser = userRepository.save(user);
             return ResponseEntity.ok(new AccountDto(updatedUser));
@@ -157,8 +176,10 @@ public class AdminUserController {
     }
 
     @DeleteMapping("/{id}")
+    @Transactional
     public ResponseEntity<Void> deleteAccount(@PathVariable Long id) {
         if (userRepository.existsById(id)) {
+            refreshTokenRepository.deleteByUserId(id);
             userRepository.deleteById(id);
             return ResponseEntity.ok().build();
         } else {

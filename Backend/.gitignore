@@ -4,6 +4,13 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+# Environment and keys
+.env
+.env.*
+!.env.example
+serviceAccountKey.json
+!serviceAccountKey.json.example
+
 ### STS ###
 .apt_generated
 .classpath
